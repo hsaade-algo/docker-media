@@ -1,0 +1,48 @@
+# this file is just an example of using override files to change variables for different environments - eg. production
+# https://docs.docker.com/compose/extends/
+
+# rename this file to docker-compose.prod.yml and replace these with your own parameters
+
+---
+version: '3.4'
+
+services:
+
+  cloudflare:
+    environment:
+      - ZONE=${EXTERNAL_DOMAIN}
+      - HOST=${EXTERNAL_DOMAIN}
+      - EMAIL=${EMAIL_ADDRESS}
+
+  letsencrypt:
+    environment:
+      - URL=${EXTERNAL_DOMAIN}
+      - SUBDOMAINS=wildcard
+      - VALIDATION=dns
+      - DNSPLUGIN=cloudflare
+      - EMAIL=${EMAIL_ADDRESS}
+
+  pihole:
+    environment:
+      - WEBPASSWORD=qwerty123
+
+  nextcloud_db:
+    environment:
+      - MYSQL_ROOT_PASSWORD=abc123
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=xyz789
+      - MYSQL_DATABASE=nextcloud
+
+  letsencrypt:
+    environment:
+      - URL=mysite.com
+      - SUBDOMAINS=wildcard
+      - VALIDATION=dns
+      - DNSPLUGIN=cloudflare
+
+  invoiceninja_db:
+    environment:
+      - MYSQL_ROOT_PASSWORD=abc123
+      - MYSQL_USER=ninja
+      - MYSQL_PASSWORD=xyz789
+      - MYSQL_DATABASE=ninja

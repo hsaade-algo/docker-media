@@ -1,0 +1,507 @@
+---
+version: '3.4'
+
+services:
+
+  pihole:
+    image: diginc/pi-hole
+    container_name: pihole
+    restart: unless-stopped
+    networks:
+      - internal_web_network
+    ports:
+      - 53:53/tcp
+      - 53:53/udp
+    volumes:
+      - ${DOCKER_STORAGE}/pihole:/etc/pihole
+      - ${DOCKER_STORAGE}/pihole/dnsmasq.d/:/etc/dnsmasq.d/
+      - ${DOCKER_STORAGE}/pihole/pihole.log:/var/log/pihole.log
+      - ${DOCKER_STORAGE}/pihole/custom_themes/skin-blue.min.css:/var/www/html/admin/style/vendor/skin-blue.min.css
+    environment:
+      - TZ=${TZ_ALT}
+      - DNS1=${PRIMARY_DNS}
+      - DNS2=${SECONDARY_DNS}
+      - ServerIP=${IP}
+      - VIRTUAL_HOST=${INTERNAL_DOMAIN}
+      - IPv6=False
+
+  vpn:
+    image: dperson/openvpn-client
+    container_name: vpn
+    restart: unless-stopped
+    networks:
+      - vpn_network
+    cap_add:
+      - net_admin
+    security_opt:
+      - label:disable
+    devices:
+      - /dev/net/tun
+    dns:
+      - ${IP}  # optional: use pihole on this host to filter DNS queries
+      - ${PRIMARY_DNS}
+      - ${SECONDARY_DNS}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/openvpn-client-netherlands:/vpn
+    environment:
+      - TZ=${TZ_ALT}
+    command: ' -f "" -r 192.168.1.0/24 -p 6881 -p 55555'
+    # for some reason the following format had more issues being read-in correctly for this container,
+    #   though it is a much cleaner way to organize the information and add comments
+    # command: [
+    #   '-f ""',  # configures firewall to only allow traffic while vpn is connected. the "" is intentional, per the project's README
+    #   '-r 192.168.1.0/24',
+    #   '-p 6881',  # qbittorrent port forward
+    #   '-p 55555', # resilio_sync port forward
+    # ]
+
+  hydra:
+    image: linuxserver/hydra2
+    container_name: hydra
+    restart: unless-stopped
+    network_mode: service:vpn
+    depends_on:
+      - vpn
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/hydra:/config
+      - ${DOWNLOADS_STORAGE}:${DOWNLOADS_STORAGE}
+
+  jackett:
+    image: linuxserver/jackett
+    container_name: jackett
+    restart: unless-stopped
+    network_mode: service:vpn
+    depends_on:
+      - vpn
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/jackett:/config
+      - ${DOWNLOADS_STORAGE}/bt:${DOWNLOADS_STORAGE}/bt
+
+  sonarr:
+    # using fork of linuxserver's that has python3 support
+    image: thebaconguy/docker-sonarr
+    container_name: sonarr
+    restart: unless-stopped
+    network_mode: service:vpn
+    depends_on:
+      - vpn
+      - nzbget
+      - qbittorrent
+      - hydra
+      - jackett
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/sonarr:/config
+      - ${DOWNLOADS_STORAGE}:${DOWNLOADS_STORAGE}
+      - ${MEDIA_STORAGE}/tv_shows:${MEDIA_STORAGE}/tv_shows
+      - ${MEDIA_STORAGE}/cartoons:${MEDIA_STORAGE}/cartoons
+      - ${MEDIA_STORAGE}/adult_cartoons:${MEDIA_STORAGE}/adult_cartoons
+      - ${MEDIA_STORAGE}/food:${MEDIA_STORAGE}/food
+      - ${MEDIA_STORAGE}/anime:${MEDIA_STORAGE}/anime
+
+  radarr:
+    # using fork of linuxserver's that has python3 support
+    image: thebaconguy/docker-radarr
+    container_name: radarr
+    restart: unless-stopped
+    network_mode: service:vpn
+    depends_on:
+      - vpn
+      - nzbget
+      - qbittorrent
+      - hydra
+      - jackett
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/radarr:/config
+      - ${DOCKER_STORAGE}/sonarr/custom_scripts:/config/custom_scripts
+      - ${DOWNLOADS_STORAGE}:${DOWNLOADS_STORAGE}
+      - ${MEDIA_STORAGE}/movies:${MEDIA_STORAGE}/movies
+
+  lidarr:
+    # using fork of linuxserver's that has python3 support
+    image: thebaconguy/docker-lidarr
+    container_name: lidarr
+    restart: unless-stopped
+    network_mode: service:vpn
+    depends_on:
+      - vpn
+      - nzbget
+      - qbittorrent
+      - hydra
+      - jackett
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/lidarr:/config
+      - ${DOWNLOADS_STORAGE}:${DOWNLOADS_STORAGE}
+      - ${DOCKER_STORAGE}/sonarr/custom_scripts:/config/custom_scripts
+      - ${MEDIA_STORAGE}/music:${MEDIA_STORAGE}/music
+
+  nzbget:
+    image: linuxserver/nzbget
+    container_name: nzbget
+    restart: unless-stopped
+    network_mode: service:vpn
+    depends_on:
+      - vpn
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/nzbget:/config
+      - ${DOWNLOADS_STORAGE}/nzb:${DOWNLOADS_STORAGE}/nzb
+
+  qbittorrent:
+    image: linuxserver/qbittorrent
+    container_name: qbittorrent
+    restart: unless-stopped
+    network_mode: service:vpn
+    depends_on:
+      - vpn
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+      - UMASK_SET=022
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/qbittorrent/config:/config
+      - ${DOCKER_STORAGE}/qbittorrent/torrents:/torrents
+      - ${DOWNLOADS_STORAGE}/bt:${DOWNLOADS_STORAGE}/bt
+
+  nginx_internal:
+    image: nginx
+    container_name: nginx_internal
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+    networks:
+      - internal_web_network
+      - vpn_network
+    depends_on:
+      - vpn
+      - radarr
+      - sonarr
+      - lidarr
+      - qbittorrent
+      - nzbget
+      - hydra
+      - jackett
+      - duplicati
+      - resilio_sync
+      - tautulli
+      - portainer
+      - organizr
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/nginx_internal/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ${DOCKER_STORAGE}/nginx_internal/nginx/conf.d:/etc/nginx/conf.d
+      - ${DOCKER_STORAGE}/nginx_internal/nginx/ssl:/etc/nginx/ssl
+      - ${DOCKER_STORAGE}/nginx_internal/nginx/logs:/etc/nginx/logs
+
+  resilio_sync:
+    image: linuxserver/resilio-sync
+    container_name: resilio_sync
+    restart: unless-stopped
+    network_mode: service:vpn
+    depends_on:
+      - vpn
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOWNLOADS_STORAGE}/seedbox:/sync
+      - ${DOCKER_STORAGE}/resilio_sync:/config
+      - ${DOCKER_STORAGE}/resilio_sync/mylicense:/sync/mylicense
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+      - UMASK_SET=002
+
+  duplicati:
+    image: linuxserver/duplicati
+    container_name: duplicati
+    restart: unless-stopped
+    network_mode: service:vpn
+    depends_on:
+      - vpn
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/duplicati:/config
+      - ${BACKUPS_STORAGE}:/backups
+      - ${CLOUD_STORAGE}:${CLOUD_STORAGE}:ro
+      - ${DOCKER_STORAGE}:${DOCKER_STORAGE}:ro
+      - ${MEDIA_STORAGE}:${MEDIA_STORAGE}:ro
+
+  organizr:
+    image: lsiocommunity/organizr
+    container_name: organizr
+    restart: unless-stopped
+    networks:
+      - internal_web_network
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/organizr:/config
+
+  tautulli:
+    image: linuxserver/tautulli
+    container_name: tautulli
+    restart: unless-stopped
+    networks:
+      - internal_web_network
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/tautulli:/config
+      - ${PLEXMEDIASERVER}/Logs:/logs:ro
+
+  ombi:
+    image: linuxserver/ombi
+    container_name: ombi
+    restart: unless-stopped
+    # ports:
+    #   - 3579:3579
+    networks:
+      - vpn_network
+      - external_web_network
+    depends_on:
+      - vpn
+      - radarr
+      - sonarr
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/ombi:/config
+
+  plexmediaserver:
+    image: linuxserver/plex
+    container_name: plexmediaserver
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+      - VERSION=latest
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/plexmediaserver/transcode:/transcode
+      - ${PLEXMEDIASERVER}:/config/Library/Application Support/Plex Media Server
+      - ${MEDIA_STORAGE}:${MEDIA_STORAGE}
+
+  nextcloud_db:
+    image: mariadb
+    container_name: nextcloud_db
+    restart: unless-stopped
+    networks:
+      nextcloud_network:
+        aliases:
+          - db
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/nextcloud_db:/var/lib/mysql
+    command: [
+      '--character-set-server=utf8mb4',
+      '--collation-server=utf8mb4_general_ci',
+      '--transaction-isolation=READ-COMMITTED',
+      '--disable-log-bin',
+      '--default-storage-engine=InnoDB',
+      '--innodb-large-prefix=on',
+      '--innodb-file-format=Barracuda',
+      '--innodb-file-per-table=true'
+    ]
+
+  nextcloud:
+    image: linuxserver/nextcloud
+    container_name: nextcloud
+    restart: unless-stopped
+    # ports:
+    #   - 7443:443
+    networks:
+      - nextcloud_network
+      - external_web_network
+    depends_on:
+      - nextcloud_db
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/nextcloud:/config
+      - ${CLOUD_STORAGE}/nextcloud:/data
+      - ${MEDIA_STORAGE}:${MEDIA_STORAGE}:ro
+
+  letsencrypt:
+    image: linuxserver/letsencrypt
+    container_name: letsencrypt
+    restart: unless-stopped
+    networks:
+      - external_web_network
+    cap_add:
+      - net_admin
+    # doesn't matter which ports are exposed, as long as it doesn't conflict with
+    #   others and is forwarded through your router to this docker host and port
+    ports:
+      # - 5080:80
+      - 5443:443
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/letsencrypt:/config
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+      - STAGING=false
+      - DHLEVEL=4096
+
+  cloudflare:
+    image: joshuaavalon/cloudflare-ddns
+    container_name: cloudflare
+    restart: unless-stopped
+    environment:
+      - TTL=1
+      - PROXY=true
+
+  portainer:
+    image: portainer/portainer
+    container_name: portainer
+    restart: unless-stopped
+    # if the nginx container won't start, it helps to debug with portainer by
+    #   accessing it directly via the exposed port
+    # ports:
+    #   - 9000:9000
+    networks:
+      - internal_web_network
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_STORAGE}/portainer/data:/data
+
+  monitorr:
+    image: monitorr/monitorr
+    container_name: monitorr
+    restart: unless-stopped
+    networks:
+      - vpn_network
+      - internal_web_network
+    environment:
+      - TZ=${TZ}
+      - PGID=${PGID}
+      - PUID=${PUID}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/monitorr/config:/config
+      - ${DOCKER_STORAGE}/monitorr/config/log:/var/log
+      - ${DOCKER_STORAGE}/organizr/www/Dashboard/images:/config/www/monitorr/assets/img/organizr
+
+  sftp:
+    image: atmoz/sftp
+    container_name: sftp
+    restart: unless-stopped
+    ports:
+      - '${EXTERNAL_SFTP_PORT}:22'
+    volumes:
+      - ${DOCKER_STORAGE}/sftp/home:/home
+      - ${DOCKER_STORAGE}/sftp/users.conf:/etc/sftp/users.conf:ro
+      - ${MEDIA_STORAGE}:/home/external/media:ro
+
+  invoiceninja_db:
+    image: mariadb
+    container_name: invoiceninja_db
+    restart: unless-stopped
+    user: '${PUID}:${PGID}'
+    networks:
+      invoiceninja_network:
+        aliases:
+          - db
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/invoiceninja_db:/var/lib/mysql
+    command: [
+      '--character-set-server=utf8',
+      '--collation-server=utf8_general_ci',
+    ]
+
+  invoiceninja:
+    image: invoiceninja/invoiceninja
+    container_name: invoiceninja
+    restart: unless-stopped
+    networks:
+      invoiceninja_network:
+        aliases:
+          - app
+    depends_on:
+      - invoiceninja_db
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/invoiceninja/public:/var/www/app/public
+      - ${DOCKER_STORAGE}/invoiceninja/storage:/var/www/app/storage
+    env_file: ${DOCKER_STORAGE}/invoiceninja/.env
+
+  invoiceninja_nginx:
+    image: nginx
+    container_name: invoiceninja_nginx
+    restart: unless-stopped
+    ports:
+      - 8000:80
+      - 8443:443
+    depends_on:
+      - invoiceninja
+    networks:
+      invoiceninja_network:
+        aliases:
+          - web
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_STORAGE}/nginx_internal/nginx/ssl:/etc/nginx/ssl:ro
+      - ${DOCKER_STORAGE}/nginx_internal/nginx/conf.d/ssl.conf:/etc/nginx/ssl.conf:ro
+      - ${DOCKER_STORAGE}/invoiceninja/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${DOCKER_STORAGE}/invoiceninja/public:/var/www/app/public
+      - ${DOCKER_STORAGE}/invoiceninja/storage:/var/www/app/storage
+
+networks:
+  vpn_network:
+  internal_web_network:
+  external_web_network:
+  nextcloud_network:
+  invoiceninja_network:

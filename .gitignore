@@ -1,0 +1,13 @@
+*
+
+!.bash_aliases
+!.bashrc
+!.gitignore
+
+!LICENSE
+!README.md
+
+docker-compose/*
+!docker-compose/.env.example
+!docker-compose/docker-compose.yml
+!docker-compose/docker-compose.prod.example.yml
