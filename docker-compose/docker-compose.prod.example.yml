@@ -33,13 +33,6 @@ services:
       - MYSQL_PASSWORD=xyz789
       - MYSQL_DATABASE=nextcloud
 
-  letsencrypt:
-    environment:
-      - URL=mysite.com
-      - SUBDOMAINS=wildcard
-      - VALIDATION=dns
-      - DNSPLUGIN=cloudflare
-
   invoiceninja_db:
     environment:
       - MYSQL_ROOT_PASSWORD=abc123
