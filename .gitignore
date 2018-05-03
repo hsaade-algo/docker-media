@@ -19,3 +19,7 @@ letsencrypt/nginx/site-confs/*
 
 nginx_internal/nginx/conf.d/*
 !nginx_internal/nginx/conf.d/*.conf
+
+openvpn_client/*
+!openvpn_client/vpn.cert_auth.example
+!openvpn_client/vpn.conf.example

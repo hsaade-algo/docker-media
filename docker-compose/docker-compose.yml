@@ -43,7 +43,7 @@ services:
       - ${SECONDARY_DNS}
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - ${DOCKER_STORAGE}/openvpn-client-netherlands:/vpn
+      - ${DOCKER_STORAGE}/openvpn_client:/vpn
     environment:
       - TZ=${TZ_ALT}
     command: ' -f "" -r 192.168.1.0/24 -p 6881 -p 55555'
