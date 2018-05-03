@@ -11,3 +11,11 @@ docker-compose/*
 !docker-compose/.env.example
 !docker-compose/docker-compose.yml
 !docker-compose/docker-compose.prod.example.yml
+
+letsencrypt/nginx/*
+letsencrypt/nginx/site-confs/*
+!letsencrypt/nginx/*.conf
+!letsencrypt/nginx/site-confs/default
+
+nginx_internal/nginx/conf.d/*
+!nginx_internal/nginx/conf.d/*.conf
